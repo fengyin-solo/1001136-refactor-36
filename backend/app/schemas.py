@@ -28,6 +28,25 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class BearingCheckItem(BaseModel):
+    """补检批次内单个支座的检查证据与结论。"""
+
+    支座编号: str
+    检查证据: str
+    检查结论: str  # 正常、锈蚀、偏位、需更换
+    维护建议: str | None = None
+    检查人: str | None = None
+
+
+class InspectionBatchPayload(BaseModel):
+    """一次支座补检提交：证据、结论、建议按批次号写进同一谱系。"""
+
+    批次号: str | None = None
+    所属桥梁: str
+    检查明细: list[BearingCheckItem] = Field(min_length=1)
+    模拟失败: bool = False
+
+
 
 class RoadSectionEntry(BaseModel):
     """管养路段明细结构。"""

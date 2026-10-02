@@ -5,14 +5,35 @@
 """
 from __future__ import annotations
 
+import contextlib
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routers import ROUTERS
+from app.services.bearing import BearingService
 from app.store import store
 
+logger = logging.getLogger("bearing-migration")
+
 app = FastAPI(title="市政道路桥梁养护管理平台", version="1.0.0")
+
+
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI):
+    # 启动即做一次存量迁移回填：按支座编号补齐谱系批次，重复启动幂等跳过。
+    summary = BearingService().migrate_legacy_bearings()
+    logger.info(
+        "支座存量迁移：回填 %s 个，跳过 %s 个",
+        summary["迁移数量"],
+        summary["跳过数量"],
+    )
+    yield
+
+
+app = FastAPI(title="市政道路桥梁养护管理平台", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

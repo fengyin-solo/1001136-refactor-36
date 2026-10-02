@@ -74,3 +74,32 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 支座维护：谱系批次与事务边界
+
+支座维护（`bearing`）按「谱系批次号」重构，规则集中在
+`backend/app/services/bearing.py`：
+
+1. **存量迁移**：启动时（`app.main` lifespan）以及 `POST /api/bearing/migration`
+   会把存量桥梁支座按「支座编号」逐条回填谱系批次号与迁移时间，每个支座一条
+   「存量迁移」事件。迁移幂等：已回填的支座重复执行只跳过、不追加事件；
+   存量数据缺支座编号时整批回滚，不迁一半。
+2. **补检事务**：`POST /api/bearing/inspections` 一次提交一个批次，检查证据、
+   支座维护结论、维护建议三类事件写入同一谱系批次，同事务内更新支座状态、
+   投影所属桥梁档案、生成工程待办与通知。任一步失败（档案缺失、结论非法、
+   `模拟失败=true`）整体回滚，接口返回 409，不残留任何事件、待办、通知。
+3. **同批次读取**：批次详情 `GET /api/bearing/batches/{批次号}`、所属桥梁档案
+   `GET /api/bearing/bridge-archive`、工程待办 `GET /api/bearing/todos`、通知入口
+   `GET /api/bearing/notifications` 都只从已提交批次派生，三处入口读同一份
+   批次结果，返回数据都带回批次号可溯源。
+4. **并发幂等**：补检按批次号幂等，「判重 + 落库」在 `store.batch_lock` 的同一
+   持有区间内完成。相同批次号的并发/重复提交只有第一次写入，其余直接返回
+   既有批次，不会追加事件、待办或通知。
+
+后端测试（含 8 线程并发同批次号、事务回滚、HTTP 全链路）：
+
+```bash
+cd backend
+python3 -m pytest tests/test_bearing_lineage.py -q
+```
+
