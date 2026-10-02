@@ -15,8 +15,12 @@ class Store:
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
 
-    def module_names(self) -> list[str]:
-        return sorted(self._tables)
+    def module_names(self, *, include_internal: bool = False) -> list[str]:
+        if include_internal:
+            return sorted(self._tables)
+        from app.lineage import LINEAGE_TABLES  # 延迟导入，避免循环依赖
+
+        return sorted(name for name in self._tables if name not in set(LINEAGE_TABLES))
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
@@ -29,7 +33,7 @@ class Store:
 
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []
-        for name in self.module_names():
+        for name in self.module_names():  # module_names 已排除谱系内部表
             rows = self.rows(name)
             modules.append({
                 "name": name,

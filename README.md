@@ -74,3 +74,31 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 支座维护：谱系批次与事务边界
+
+支座维护（`bearing`）的所有写入都收敛到“谱系批次（lineage batch）”，
+实现位于 `backend/app/lineage.py` 与 `backend/app/services/bearing.py`：
+
+- **存量迁移**：服务启动（lifespan）时把存量支座按支座编号排序回填，
+  整批落在固定批次 `MIG-BEARING-STOCK` 下，只执行一次，重复触发幂等。
+- **同一批次提交**：补检时检查证据、维护结论、处置建议必须在同一批次号下提交；
+  事件先暂存，commit 在最后一个提交点统一落库，提交前任一步失败（含提交点故障）
+  都按快照整体回滚，不留半截批次、待办或通知。
+- **三个入口读同一结果**：所属桥梁档案（`GET /api/bearing/lineage`）、
+  工程待办（`GET /api/bearing/todos`）、通知入口（`GET /api/bearing/notifications`）
+  都只读批次提交后的投影，按批次号回读用 `GET /api/bearing/batches/{批次号}`。
+- **并发补检幂等**：`POST /api/bearing/inspections` 按请求里的 `批次号` 判重，
+  已落地的批次直接回读旧结果（返回 `replayed: true`），重复提交不会追加事件；
+  并发同批次号只有一次真正落地。
+
+内存仓库阶段用一把可重入锁串行化“判重 → 暂存 → 提交”；换成数据库时对应
+`BEGIN … COMMIT/ROLLBACK` 加批次号唯一约束，业务层接口不变。
+
+验证脚本：
+
+```bash
+cd backend
+PYTHONPATH=. python3 scripts/smoke_bearing.py
+```
+

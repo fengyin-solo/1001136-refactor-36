@@ -21,6 +21,18 @@ class ActionResult(BaseModel):
     entry: dict[str, Any] | None = None
 
 
+class BatchResult(BaseModel):
+    """谱系批次提交结果：幂等命中时 replayed=True，事件与投影一并回带。"""
+
+    ok: bool
+    message: str
+    batch_no: str | None = None
+    replayed: bool = False
+    entry: dict[str, Any] | None = None
+    events: list[dict[str, Any]] = Field(default_factory=list)
+    result: dict[str, Any] | None = None
+
+
 class EntryPayload(BaseModel):
     """登记或修改一条业务记录时提交的字段集合。"""
 
